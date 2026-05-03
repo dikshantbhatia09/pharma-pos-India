@@ -1,4 +1,4 @@
-name: pharma_pos
+name: pharma_pos_india
 description: Offline-first pharmacy POS for independent retail pharmacies in India.
 publish_to: "none"
 version: 0.1.0+1
