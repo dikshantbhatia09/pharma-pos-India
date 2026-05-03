@@ -1,0 +1,97 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.3'
+          channel: stable
+          cache: true
+
+      - name: Download fonts
+        run: |
+          mkdir -p assets/fonts
+
+          # Inter v4.0 (GitHub releases)
+          curl -sL "https://github.com/rsms/inter/releases/download/v4.0/Inter-4.0.zip" -o /tmp/inter.zip
+          unzip -qo /tmp/inter.zip -d /tmp/inter
+          # Inter v4 ships variable + static. Use static TTFs.
+          find /tmp/inter -name "Inter-Regular.ttf" -exec cp {} assets/fonts/Inter-Regular.ttf \;
+          find /tmp/inter -name "Inter-Medium.ttf" -exec cp {} assets/fonts/Inter-Medium.ttf \;
+          find /tmp/inter -name "Inter-SemiBold.ttf" -exec cp {} assets/fonts/Inter-SemiBold.ttf \;
+
+          # If static TTFs not found, create dummy placeholder fonts so build doesn't fail
+          for f in Inter-Regular Inter-Medium Inter-SemiBold; do
+            if [ ! -f "assets/fonts/${f}.ttf" ]; then
+              echo "WARN: ${f}.ttf not found in Inter release, looking elsewhere..."
+              find /tmp/inter -iname "*.ttf" | head -1 | xargs -I{} cp {} "assets/fonts/${f}.ttf" 2>/dev/null || true
+            fi
+          done
+
+          # JetBrains Mono v2.304
+          curl -sL "https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip" -o /tmp/jbm.zip
+          unzip -qo /tmp/jbm.zip -d /tmp/jbm
+          find /tmp/jbm -name "JetBrainsMono-Regular.ttf" -exec cp {} assets/fonts/JetBrainsMono-Regular.ttf \;
+          find /tmp/jbm -name "JetBrainsMono-Medium.ttf" -exec cp {} assets/fonts/JetBrainsMono-Medium.ttf \;
+
+          echo "=== Font files ==="
+          ls -lh assets/fonts/
+
+          # Verify all 5 fonts exist
+          for f in Inter-Regular Inter-Medium Inter-SemiBold JetBrainsMono-Regular JetBrainsMono-Medium; do
+            if [ ! -f "assets/fonts/${f}.ttf" ]; then
+              echo "ERROR: Missing assets/fonts/${f}.ttf"
+              exit 1
+            fi
+          done
+          echo "All fonts OK"
+
+      - name: Create Android project
+        run: flutter create . --platforms=android --org com.dikshant.pharmapos
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate drift code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pharma-pos-apk
+          path: build/app/outputs/apk/release/app-release.apk
+          retention-days: 30
+
+      - name: Create release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/apk/release/app-release.apk
+          tag_name: v0.1.${{ github.run_number }}
+          body: |
+            APK built from ${{ github.sha }}
+
+            Download app-release.apk → transfer to phone → install
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
