@@ -26,6 +26,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Fix package name
+        run: sed -i 's/^name: .*/name: pharma_pos_india/' pubspec.yaml
+
       - name: Download fonts
         run: |
           mkdir -p assets/fonts
@@ -46,7 +49,7 @@ jobs:
           echo "All fonts downloaded"
 
       - name: Create Android project
-        run: flutter create . --platforms=android --org com.dikshant.pharmapos
+        run: flutter create . --platforms=android --org com.dikshant.pharmapos --project-name=pharma_pos_india
 
       - name: Install dependencies
         run: flutter pub get
